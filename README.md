@@ -91,6 +91,14 @@ Relevance Ranking
 Top Matching Products
 ```
 
+## 🖥️ Preview
+
+<p align="center">
+  <img src="screenshots/Screenshot_Home.png" width="45%" />
+  <img src="screenshots/Screenshot_Product.png" width="45%" />
+  <img src="screenshots/Screenshot_Recommendation.png" width="45%" />
+</p>
+
 `SearchText` combines:
 
 - product name
