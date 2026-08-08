@@ -66,26 +66,30 @@ trending_products.csv    Cosine similarity
 
 ## Important distinction
 
-The original application did **not** use the ML model for the `/main?query=...` search page.
+## 🔎 ML-Powered Product Search
 
-The old search logic was:
+The system provides relevance-based product search using **TF-IDF vectorization and cosine similarity**.
+
+Instead of relying only on exact product-name matching, each product is represented using a combined text representation containing:
+
+- Product name
+- Category
+- Brand
+- Processed product tags
+
+The user's search query is transformed into a TF-IDF vector and compared against the product representations using cosine similarity. Products are then ranked by relevance and the most relevant results are returned.
 
 ```text
-query -> exact substring search inside Product Name
-      -> if no match -> random products
-```
+User Query
+    ↓
+TF-IDF Vectorization
+    ↓
+Cosine Similarity
+    ↓
+Relevance Ranking
+    ↓
+Top Matching Products
 
-So a query such as `shampoo` only worked when `shampoo` appeared in the product name. Any unmatched query fell back to random products, which made the search look broken.
-
-The fixed application now uses:
-
-```text
-query
-  -> TF-IDF query vector
-  -> cosine similarity against product SearchText
-  -> rank by relevance
-  -> return top products
-```
 
 `SearchText` combines:
 
