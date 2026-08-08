@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Product Search | MyStore</title>
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #f6f9ff, #dce4ff);
+      margin: 0;
+    }
+    .search-box {
+      text-align: center;
+    }
+    .search-box h1 {
+      margin-bottom: 20px;
+      font-size: 28px;
+      color: #333;
+    }
+    input[type="text"] {
+      width: 300px;
+      padding: 10px 15px;
+      border: 2px solid #007bff;
+      border-radius: 25px;
+      outline: none;
+      font-size: 16px;
+    }
+    button {
+      padding: 10px 18px;
+      border: none;
+      background: #007bff;
+      color: white;
+      border-radius: 25px;
+      cursor: pointer;
+      margin-left: 10px;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div class="search-box">
+    <h1>Search for a Product</h1>
+    <input type="text" id="searchInput" placeholder="Enter product name"/>
+    <button onclick="searchProduct()">Search</button>
+  </div>
+
+  <script>
+    function searchProduct() {
+      const query = document.getElementById("searchInput").value.trim();
+      if (query !== "") {
+        // Redirect to Flask /main route with query parameter
+        window.location.href = "/main?query=" + encodeURIComponent(query);
+      } else {
+        alert("Please enter a product name!");
+      }
+    }
+  </script>
+</body>
+</html>
