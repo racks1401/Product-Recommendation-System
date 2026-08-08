@@ -1,6 +1,6 @@
 # Product Recommendation System
 
-A Flask-based product search and recommendation system built from a Walmart product-review dataset.
+A machine-learning-based product search and content-based recommendation system built with Python and Flask. The system uses TF-IDF and cosine similarity to find relevant products and recommend similar products based on product attributes and descriptions.
 
 ## What the project does
 
