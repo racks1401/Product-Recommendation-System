@@ -89,7 +89,7 @@ Cosine Similarity
 Relevance Ranking
     ↓
 Top Matching Products
-
+```
 
 `SearchText` combines:
 
