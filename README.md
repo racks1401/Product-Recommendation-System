@@ -23,8 +23,12 @@ product-recommendation-system/
 ├── Recommendation_System.ipynb    # Original ML training/preprocessing notebook
 ├── requirements.txt
 ├── .gitignore
+├── screenshots/
+│   ├── Screenshot_Home.png        
+│   ├── Screenshot_Product.png  
+│   └── Screenshot_Recommendation.png  
 ├── models/
-│   ├── clean_data.csv             # Processed product dataset
+│   ├── clean_data.csv             # Processed product dataset during preprocessing
 │   └── trending_products.csv      # Top-rated products used on the home page
 ├── templates/
 │   ├── index.html                 # Search page
@@ -63,8 +67,6 @@ trending_products.csv    Cosine similarity
                                v
                        Related products
 ```
-
-## Important distinction
 
 ## 🔎 ML-Powered Product Search
 
