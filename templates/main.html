@@ -37,9 +37,9 @@
       {% for p in products %}
       <a href="/product/{{ p['Name'] | urlencode }}">
         <div class="card">
-          <img src="{{ p['ImageURL'] }}" alt="{{ p['Name'] }}"/>
+          <img src="{{ p['ImageURL'] }}" alt="{{ p['Name'] }}" onerror="this.onerror=null; this.src='{{ p['FallbackImage'] }}';"/>
           <h4>{{ truncate(p['Name'], 40) }}</h4>
-          <p>₹{{ p.get('Price', random_price) }}</p>
+          <p>{{ p.get('Price') | price }}</p>
         </div>
       </a>
       {% else %}

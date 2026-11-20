@@ -1,27 +1,85 @@
 from flask import Flask, request, render_template, redirect, url_for
+import hashlib
+import os
 import random
+import re
+import sys
 import urllib.parse
+from pathlib import Path
 
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
+
+from text_repair import repair_encoding
 
 app = Flask(__name__)
 
 # -------------------------------------------------------------------
 # Data loading
 # -------------------------------------------------------------------
-trending_products = pd.read_csv("models/trending_products.csv")
-train_data = pd.read_csv("models/clean_data.csv")
+MODELS_DIR = Path(__file__).resolve().parent / "models"
+# CLEAN_DATA_PATH can point the app at another build (the tests use this).
+CLEAN_DATA_PATH = Path(
+    os.environ.get("CLEAN_DATA_PATH", MODELS_DIR / "clean_data.csv")
+)
+
+if not CLEAN_DATA_PATH.exists():
+    sys.exit(
+        f"{CLEAN_DATA_PATH} not found. Build it first with:\n"
+        "    python build_data.py"
+    )
+
+trending_products = pd.read_csv(MODELS_DIR / "trending_products.csv")
+train_data = pd.read_csv(CLEAN_DATA_PATH)
+
+_missing_columns = [
+    c for c in ("Price", "DescriptionText") if c not in train_data.columns
+]
+if _missing_columns:
+    sys.exit(
+        f"{CLEAN_DATA_PATH} has no {', '.join(_missing_columns)} column "
+        "(built by an older version). Rebuild it with:\n"
+        "    python build_data.py"
+    )
+
+_BROKEN_QUOTE = re.compile(r"&quot;?")
+
+
+def clean_name(name):
+    """Product name as it should read.
+
+    - The source dropped the ";" from &quot in some names (e.g. 12&quot,
+      &quotLiv&quotin). Other "&" text (P&G, J&J) is left alone.
+    - A few names are garbled by an encoding mix-up (e.g.
+      "SuperStay 24Ã‚Â Liquid Lipstick"); see text_repair.py.
+
+    Applied to the data and to names that arrive in URLs and forms, so
+    links and typed names that still use the old form keep working.
+    """
+    name = _BROKEN_QUOTE.sub('"', str(name))
+    repaired = repair_encoding(name)
+    if repaired != name:
+        # The repair can turn a garbled character into a non-breaking
+        # space; use an ordinary one so a typed name still matches.
+        repaired = repaired.replace("\xa0", " ")
+    return repaired
+
 
 # Keep product rows usable by the web app.
-train_data["Name"] = train_data["Name"].fillna("").astype(str)
+train_data["Name"] = train_data["Name"].fillna("").astype(str).map(clean_name)
+trending_products["Name"] = trending_products["Name"].fillna("").astype(str).map(clean_name)
 train_data["Tags"] = train_data["Tags"].fillna("").astype(str)
 train_data["Category"] = train_data["Category"].fillna("").astype(str)
 train_data["Brand"] = train_data["Brand"].fillna("").astype(str)
+# Readable product description for the product page; "" when there is none.
+train_data["DescriptionText"] = train_data["DescriptionText"].fillna("").astype(str)
+
+# Price is in USD; missing prices stay NaN and are shown as unavailable.
+train_data["Price"] = pd.to_numeric(train_data["Price"], errors="coerce")
 
 # Local fallback images
-RANDOM_IMAGE_URLS = [
+FALLBACK_IMAGE_URLS = [
     "/static/img/img_1.png",
     "/static/img/img_2.png",
     "/static/img/img_3.png",
@@ -31,6 +89,59 @@ RANDOM_IMAGE_URLS = [
     "/static/img/img_7.png",
     "/static/img/img_8.png",
 ]
+
+_IMAGE_URL = re.compile(r"^https?://\S+$")
+
+
+def first_image_url(value):
+    """First usable URL from an ImageURL field, or "" if there is none.
+
+    The field often holds several URLs joined with " | "; only one can go
+    into an <img src>.
+    """
+    if not isinstance(value, str):
+        return ""
+    for part in value.split("|"):
+        part = part.strip()
+        if _IMAGE_URL.match(part):
+            return part
+    return ""
+
+
+def fallback_image(name):
+    """A local placeholder image picked from the product name.
+
+    Uses a stable hash (Python's hash() changes between runs), so a product
+    always gets the same placeholder.
+    """
+    digest = hashlib.md5(str(name).lower().encode("utf-8")).digest()
+    return FALLBACK_IMAGE_URLS[int.from_bytes(digest[:4], "big") % len(FALLBACK_IMAGE_URLS)]
+
+
+def prepare_images(df):
+    """Give every row one ImageURL, plus a FallbackImage for the browser to
+    use if that URL fails to load."""
+    df["FallbackImage"] = df["Name"].map(fallback_image)
+    df["ImageURL"] = df["ImageURL"].map(first_image_url)
+    missing = df["ImageURL"] == ""
+    df.loc[missing, "ImageURL"] = df.loc[missing, "FallbackImage"]
+
+
+prepare_images(train_data)
+prepare_images(trending_products)
+
+# Products are identified by name (URLs are /product/<name>), and some
+# names appear on several rows with different prices and images. Every row
+# gets the price and image of the first row with that name, which is the
+# row the product page shows, so a product looks the same on every page.
+_name_key = train_data["Name"].str.lower()
+_first_row_by_name = (
+    train_data.assign(_name_key=_name_key)
+    .drop_duplicates(subset=["_name_key"])
+    .set_index("_name_key")
+)
+for _column in ("Price", "ImageURL"):
+    train_data[_column] = _name_key.map(_first_row_by_name[_column])
 
 # -------------------------------------------------------------------
 # Search model
@@ -105,6 +216,14 @@ recommendation_data = (
     .reset_index(drop=True)
 )
 
+# Related-product cards show the rating of the product page they link to.
+# Product pages look names up case-insensitively, so for the few names that
+# differ only in case, that is the first row of the case-insensitive name.
+# (Only this display copy is changed; search still uses train_data's Rating.)
+recommendation_data["Rating"] = (
+    recommendation_data["Name"].str.lower().map(_first_row_by_name["Rating"])
+)
+
 recommendation_vectorizer = TfidfVectorizer(stop_words="english")
 recommendation_matrix = recommendation_vectorizer.fit_transform(
     recommendation_data["Tags"]
@@ -140,7 +259,8 @@ def content_based_recommendations(item_name, top_n=10):
     result["SimilarityScore"] = similarities[top_indices]
 
     return result[
-        ["Name", "ReviewCount", "Brand", "ImageURL", "Rating", "SimilarityScore"]
+        ["Name", "ReviewCount", "Brand", "ImageURL", "FallbackImage", "Rating",
+         "Price", "SimilarityScore"]
     ].reset_index(drop=True)
 
 
@@ -154,22 +274,25 @@ def truncate(text, length):
     return text[:length] + "..." if len(text) > length else text
 
 
-def add_fallback_images(products):
-    """Ensure every product has an image usable by the template."""
-    products = products.copy()
-    for product in products:
-        image = product.get("ImageURL")
-        if not image or pd.isna(image):
-            product["ImageURL"] = random.choice(RANDOM_IMAGE_URLS)
-    return products
+@app.template_test("rated")
+def is_rated(value):
+    """True if a product has a real rating.
+
+    Ratings are on a 1-5 scale; build_data.py (like the notebook) fills
+    missing ratings with 0, so 0 or an empty value means "not rated".
+    """
+    try:
+        return float(value) > 0  # NaN > 0 is False too
+    except (TypeError, ValueError):
+        return False
 
 
-def product_price(product):
-    # The supplied dataset does not contain a Price column, so these
-    # are UI placeholders from the original project.
-    return product.get("Price") if product.get("Price") else random.choice(
-        [40, 50, 60, 70, 100, 122, 106]
-    )
+@app.template_filter("price")
+def format_price(value):
+    """Format a USD price for display, e.g. 14.95 -> "$14.95"."""
+    if value is None or pd.isna(value):
+        return "Price unavailable"
+    return f"${float(value):,.2f}"
 
 
 # -------------------------------------------------------------------
@@ -178,14 +301,11 @@ def product_price(product):
 @app.route("/")
 def index():
     products = trending_products.head(8).to_dict(orient="records")
-    products = add_fallback_images(products)
 
     return render_template(
         "index.html",
         trending_products=products,
         truncate=truncate,
-        random_product_image_urls=RANDOM_IMAGE_URLS,
-        random_price=random.choice([40, 50, 60, 70, 100, 122, 106]),
     )
 
 
@@ -209,20 +329,17 @@ def main():
         ).to_dict(orient="records")
         message = "Showing random products. Search for a product to get ranked results."
 
-    products = add_fallback_images(products)
-
     return render_template(
         "main.html",
         products=products,
         truncate=truncate,
-        random_price=random.choice([40, 50, 60, 70, 100, 122, 106]),
         message=message,
     )
 
 
 @app.route("/product/<path:product_name>")
 def product_page(product_name):
-    product_name = urllib.parse.unquote(product_name)
+    product_name = clean_name(urllib.parse.unquote(product_name))
 
     matches = train_data[
         train_data["Name"].str.lower() == product_name.lower()
@@ -242,18 +359,15 @@ def product_page(product_name):
     dataset_name = product_row["Name"]
 
     rec = content_based_recommendations(dataset_name, top_n=8)
-    recommendations = add_fallback_images(rec.to_dict(orient="records"))
+    recommendations = rec.to_dict(orient="records")
 
     product = product_row.to_dict()
-    product = add_fallback_images([product])[0]
 
     return render_template(
         "product.html",
         product=product,
         recommendations=recommendations,
         truncate=truncate,
-        random_product_image_urls=RANDOM_IMAGE_URLS,
-        random_price=product_price(product),
     )
 
 
@@ -265,7 +379,7 @@ def indexredirect():
 @app.route("/recommendations", methods=["POST", "GET"])
 def recommendations():
     if request.method == "POST":
-        prod = request.form.get("prod", "").strip()
+        prod = clean_name(request.form.get("prod", "").strip())
 
         try:
             nbr = int(request.form.get("nbr", 10))
@@ -280,17 +394,15 @@ def recommendations():
                 "main.html",
                 products=[],
                 truncate=truncate,
-                random_price=50,
                 message=f'No recommendations available for "{prod}".',
             )
 
-        products = add_fallback_images(rec.to_dict(orient="records"))
+        products = rec.to_dict(orient="records")
 
         return render_template(
             "main.html",
             products=products,
             truncate=truncate,
-            random_price=random.choice([40, 50, 60, 70, 100, 122, 106]),
             message=f'Recommended products similar to "{prod}".',
         )
 

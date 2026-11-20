@@ -25,6 +25,9 @@ env/
 # Logs
 *.log
 
+# pytest
+.pytest_cache/
+
 # Jupyter
 .ipynb_checkpoints/
 

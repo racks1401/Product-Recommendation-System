@@ -13,6 +13,9 @@
     .product-info h2 { margin-top:0; font-size:28px; color:#222; }
     .price { color:#007bff; font-size:22px; margin:10px 0; }
     .rating { color:#f39c12; font-weight:bold; }
+    .rating.unrated { color:#888; font-weight:normal; font-style:italic; }
+    .description { color:#444; line-height:1.6; }
+    .description.missing { color:#888; font-style:italic; }
     .btns { margin-top:20px; }
     .btn { padding:10px 15px; border:none; border-radius:6px; cursor:pointer; color:white; margin-right:10px; font-size:15px; }
     .btn.buy { background:#ff6f00; }
@@ -24,17 +27,26 @@
     .recommend-card img { width:100%; height:140px; object-fit:cover; border-radius:8px; }
     .recommend-card h4 { font-size:15px; margin:10px 0 5px; }
     .recommend-card p { margin:0; color:#007bff; font-weight:bold; }
+    .recommend-card p.unrated { color:#888; font-weight:normal; font-style:italic; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="product-section">
-      <img src="{{ product['ImageURL'] if product.get('ImageURL') else random_product_image_urls[0] }}" alt="{{ product['Name'] }}">
+      <img src="{{ product['ImageURL'] }}" alt="{{ product['Name'] }}" onerror="this.onerror=null; this.src='{{ product['FallbackImage'] }}';">
       <div class="product-info">
         <h2>{{ product['Name'] }}</h2>
+        {% if product.get('Rating') is rated %}
         <div class="rating">⭐ {{ product.get('Rating', 'N/A') }}</div>
-        <div class="price">₹{{ random_price }}</div>
-        <p>{{ product.get('Tags', '') }}</p>
+        {% else %}
+        <div class="rating unrated">No ratings yet</div>
+        {% endif %}
+        <div class="price">{{ product.get('Price') | price }}</div>
+        {% if product.get('DescriptionText') %}
+        <p class="description">{{ product['DescriptionText'] }}</p>
+        {% else %}
+        <p class="description missing">No description available for this product.</p>
+        {% endif %}
         <div class="btns">
           <button class="btn buy">Buy Now</button>
           <button class="btn cart">Add to Cart</button>
@@ -49,9 +61,13 @@
     {% for row in recommendations %}
       <a href="/product/{{ row['Name'] | urlencode }}">
         <div class="recommend-card">
-          <img src="{{ row.get('ImageURL') or random_product_image_urls[loop.index0] }}" alt="{{ row['Name'] }}">
+          <img src="{{ row['ImageURL'] }}" alt="{{ row['Name'] }}" onerror="this.onerror=null; this.src='{{ row['FallbackImage'] }}';">
           <h4>{{ truncate(row['Name'], 30) }}</h4>
+          {% if row.get('Rating') is rated %}
           <p>⭐ {{ row.get('Rating', 'N/A') }}</p>
+          {% else %}
+          <p class="unrated">No ratings yet</p>
+          {% endif %}
         </div>
       </a>
     {% endfor %}
